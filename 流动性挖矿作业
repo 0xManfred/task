@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "ERC20-task.sol";
+
+contract LiquidityMining {
+XXToken private _token;
+uint256 private _totalRewards;
+uint256 private _startTimestamp;
+uint256 private _endTimestamp;
+uint256 private _rewardPerBlock;
+mapping(address => uint256) private _balances;
+mapping(address => uint256) private _lastUpdateBlock;
+
+constructor(address token_, uint256 totalRewards_, uint256 startTimestamp_, uint256 endTimestamp_) {
+    _token = XXToken(token_);
+    _totalRewards = totalRewards_ * 10 ** uint256(_token.decimals());
+    _startTimestamp = startTimestamp_;
+    _endTimestamp = endTimestamp_;
+    uint256 duration = endTimestamp_ - startTimestamp_;
+    _rewardPerBlock = _totalRewards / duration;
+}
+
+function deposit(uint256 amount) public {
+    require(amount > 0, "Amount must be greater than zero");
+    require(_token.transferFrom(msg.sender, address(this), amount), "Transfer failed");
+    _balances[msg.sender] += amount;
+    _lastUpdateBlock[msg.sender] = block.number;
+}
+
+function withdraw(uint256 amount) public {
+    require(amount > 0, "Amount must be greater than zero");
+    require(_balances[msg.sender] >= amount, "Insufficient balance");
+    updateRewards(msg.sender);
+    _balances[msg.sender] -= amount;
+    require(_token.transfer(msg.sender, amount), "Transfer failed");
+}
+
+function getReward() public {
+    updateRewards(msg.sender);
+    uint256 reward = _balances[msg.sender];
+    require(reward > 0, "No reward available");
+    _balances[msg.sender] = 0;
+    require(_token.transfer(msg.sender, reward), "Transfer failed");
+}
+
+function updateRewards(address account) private {
+    uint256 lastBlock = _lastUpdateBlock[account];
+    if (lastBlock == 0 || block.number <= lastBlock) {
+        return;
+    }
+    uint256 blocksElapsed = block.number - lastBlock;
+    uint256 rewards = _rewardPerBlock * blocksElapsed;
+    _balances[account] += rewards;
+    _lastUpdateBlock[account] = block.number;
+}
+
+function balanceOf(address account) public view returns (uint256) {
+    uint256 balance = _balances[account];
+    if (block.timestamp < _startTimestamp) {
+        return balance;
+    }
+    if (block.timestamp >= _endTimestamp) {
+        return balance + _totalRewards;
+    }
+    uint256 durationElapsed = block.timestamp - _startTimestamp;
+    uint256 totalDuration = _endTimestamp - _startTimestamp;
+    uint256 totalRewardsElapsed = _totalRewards * durationElapsed / totalDuration;
+    return balance + totalRewardsElapsed;
+}
+}
